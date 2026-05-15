@@ -1,0 +1,1 @@
+"""Istimara OCR FastAPI application."""
