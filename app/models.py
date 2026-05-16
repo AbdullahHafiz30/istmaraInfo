@@ -13,7 +13,11 @@ class IstimaraData(BaseModel):
     color: str | None = None
     vin: str | None = None
     owner_name: str | None = None
+    owner_id: str | None = None
+    user_name: str | None = None
+    user_id: str | None = None
     expiry_date: str | None = None
+    expiry_date_hijri: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -22,6 +26,7 @@ class ExtractResponse(BaseModel):
     success: bool
     data: IstimaraData
     warnings: list[str] = []
+    raw_text: list[str] | None = None
 
 
 class ErrorResponse(BaseModel):

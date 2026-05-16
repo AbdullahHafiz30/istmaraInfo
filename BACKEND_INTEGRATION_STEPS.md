@@ -1,105 +1,100 @@
-# Backend Integration Steps
+# Backend Handoff - Istimara OCR API
 
-This is the handoff file for a backend developer who wants to integrate the Istimara OCR feature into another backend or deploy this FastAPI service as a separate microservice.
+This file is for the backend developer who will integrate the OCR feature.
 
-## Current Feature
+## Recommended Architecture
 
-The service exposes one OCR endpoint:
+Use this project as an internal OCR microservice.
+
+```text
+Flutter app
+  -> main backend
+  -> Istimara OCR API
+  -> main backend validates/saves confirmed data
+  -> Flutter app shows editable confirmation form
+```
+
+Do not expose this OCR service directly to public mobile clients in production.
+
+## Run Locally
+
+```powershell
+cd C:\File_Location
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+py -m pip install -r requirements.txt
+py -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Swagger:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+Health:
+
+```text
+GET http://127.0.0.1:8000/health
+```
+
+Expected:
+
+```json
+{"status": "ok"}
+```
+
+## Endpoint
 
 ```text
 POST /extract-istimara
 ```
 
-Input:
+Request:
 
 - `multipart/form-data`
 - file field name: `file`
-- supported extensions: `.jpg`, `.jpeg`, `.png`, `.heic`, `.pdf`
+- supported: `.jpg`, `.jpeg`, `.png`, `.heic`, `.pdf`
 - max size: `10MB`
 
-Output:
+Debug mode:
+
+```text
+POST /extract-istimara?include_raw_text=true
+```
+
+Use debug mode only while testing. `raw_text` can contain personal data.
+
+## Example Response
 
 ```json
 {
   "success": true,
   "data": {
     "plate_number": "1234",
-    "plate_text_ar": "أ ب ح",
+    "plate_text_ar": "أ ب ج",
     "plate_text_en": "A B J",
-    "registration_number": null,
-    "serial_number": null,
-    "vehicle_make": "Toyota",
-    "vehicle_model": null,
-    "model_year": "2023",
-    "color": "White",
-    "vin": "JTDBR32E720123456",
-    "owner_name": null,
-    "expiry_date": "2099-05-01"
+    "registration_number": "XXXXXXXX",
+    "serial_number": "XXXXXXXX",
+    "vehicle_make": "Kia",
+    "vehicle_model": "Sportage",
+    "model_year": "2025",
+    "color": "Blue",
+    "vin": "JTXXXXXXXXXXXXXXX",
+    "owner_name": "Owner Name",
+    "owner_id": null,
+    "user_name": "User Name",
+    "user_id": "1098102864",
+    "expiry_date": "2029-04-18",
+    "expiry_date_hijri": "1450-12-04"
   },
   "warnings": []
 }
 ```
 
-## Recommended Integration Option
+## Backend Integration Example
 
-Use this project as a small internal OCR microservice.
-
-Flow:
-
-```text
-Flutter app
-  -> existing backend
-  -> Istimara OCR service /extract-istimara
-  -> existing backend validates/saves confirmed data
-  -> Flutter app displays editable confirmation form
-```
-
-This keeps OCR dependencies like EasyOCR, Torch, OpenCV, and PyMuPDF isolated from the main backend.
-
-## Setup
-
-From the project folder:
-
-```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-py -m pip install --upgrade pip
-py -m pip install -r requirements.txt
-```
-
-Run tests:
-
-```powershell
-py -m pytest
-```
-
-Start locally:
-
-```powershell
-py -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-For access from a physical phone or another machine on the same network:
-
-```powershell
-py -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-Health check:
-
-```text
-GET /health
-```
-
-Expected:
-
-```json
-{"status":"ok"}
-```
-
-## Existing Backend Call Example
-
-Python example:
+Python:
 
 ```python
 import requests
@@ -116,7 +111,7 @@ def extract_istimara(file_path: str) -> dict:
     return response.json()
 ```
 
-Node.js example:
+Node.js:
 
 ```js
 import fs from "node:fs";
@@ -133,38 +128,31 @@ export async function extractIstimara(filePath) {
   });
 
   if (!response.ok) {
-    throw new Error(`OCR request failed: ${response.status} ${await response.text()}`);
+    throw new Error(`OCR failed: ${response.status} ${await response.text()}`);
   }
 
   return response.json();
 }
 ```
 
-## Production Checklist
+## Production Notes
 
-- Put this service behind the existing backend, not directly public to mobile clients.
-- Add authentication between services.
-- Use HTTPS outside local development.
-- Set request timeout to at least `120` seconds because OCR can be slow on first run.
+- Put this service behind the main backend.
+- Add service-to-service authentication.
+- Use HTTPS.
 - Do not log uploaded files, raw OCR text, owner names, VINs, or plate numbers.
-- Delete temporary files if the integrating backend stores uploads before forwarding.
-- Store only user-confirmed extracted data.
-- Return `warnings` to the Flutter app so the UI can show fields that need review.
+- Keep `include_raw_text=false` in production.
+- Store only user-confirmed data.
+- Let the frontend show an editable confirmation form.
+- Treat `expiry_date_hijri` as Hijri until converted.
+- Use `warnings` to decide which fields need user review.
+- Because card images share a design, prefer fixed-layout and label-relative extraction over global text guessing.
+- `owner_id` is returned only when an explicit owner-id value is visible. In some card images, only `user_id` is visible.
 
-## Error Handling Contract
+## Status Codes
 
-Expected client behavior:
-
-- `200`: OCR ran; inspect `data` and `warnings`.
-- `400`: bad upload, unsupported file, empty file, unreadable image/PDF.
-- `422`: missing multipart `file` field.
-- `500`: unexpected backend failure; show retry message and log only non-sensitive metadata.
-
-## Known Limitations
-
-- EasyOCR downloads model files on first real OCR use.
-- First extraction may be slower than later requests.
-- OCR confidence is not perfect, especially with glare, skew, low light, or cropped cards.
-- The Flutter app should always show an editable confirmation form before saving.
-- Google Vision or Azure Document Intelligence can be added later for higher production accuracy.
-
+- `200`: OCR ran. Check `data` and `warnings`.
+- `400`: bad file, unsupported type, empty file, or unreadable file.
+- `422`: missing `file` field.
+- `503`: OCR engine/model initialization issue.
+- `500`: unexpected backend error.

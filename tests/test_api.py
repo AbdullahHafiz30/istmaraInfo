@@ -6,6 +6,8 @@ client = TestClient(app)
 
 
 class FakeOCRService:
+    requires_preprocessing = True
+
     def extract_text(self, images):
         return [
             "Plate 1234 أ ب ح",
@@ -52,6 +54,56 @@ def test_extract_istimara_returns_response_shape(monkeypatch):
     assert body["data"]["plate_number"] == "1234"
     assert body["data"]["vin"] == "JTDBR32E720123456"
     assert body["warnings"] == []
+    assert "raw_text" not in body
+
+
+def test_extract_istimara_can_include_raw_text_for_debugging(monkeypatch):
+    from app import main
+
+    monkeypatch.setattr(main, "ocr_service", FakeOCRService())
+    response = client.post(
+        "/extract-istimara?include_raw_text=true",
+        files={
+            "file": (
+                "card.png",
+                _tiny_png(),
+                "image/png",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["raw_text"] == [
+        "Plate 1234 أ ب ح",
+        "VIN JTDBR32E720123456",
+        "Toyota Camry 2023 White",
+        "Expiry 2099-05-01",
+    ]
+
+
+def test_extract_istimara_returns_503_for_ocr_runtime_error(monkeypatch):
+    from app import main
+
+    class FailingOCRService:
+        requires_preprocessing = False
+
+        def extract_text(self, images):
+            raise RuntimeError("OCR engine failed to initialize.")
+
+    monkeypatch.setattr(main, "ocr_service", FailingOCRService())
+    response = client.post(
+        "/extract-istimara",
+        files={
+            "file": (
+                "card.png",
+                _tiny_png(),
+                "image/png",
+            )
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "OCR engine failed to initialize."
 
 
 def _tiny_png() -> bytes:

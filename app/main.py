@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 
 from app.models import ErrorResponse, ExtractResponse
 from app.services.ocr import OCRService
@@ -22,9 +22,16 @@ async def health() -> dict[str, str]:
 @app.post(
     "/extract-istimara",
     response_model=ExtractResponse,
-    responses={400: {"model": ErrorResponse}},
+    response_model_exclude_none=True,
+    responses={400: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
 )
-async def extract_istimara_endpoint(file: UploadFile = File(...)) -> ExtractResponse:
+async def extract_istimara_endpoint(
+    file: UploadFile = File(...),
+    include_raw_text: bool = Query(
+        default=False,
+        description="Local debugging only. Returns raw OCR lines and may contain personal data.",
+    ),
+) -> ExtractResponse:
     content = await file.read()
     validation_error = validate_upload(file.filename, content)
     if validation_error:
@@ -36,6 +43,9 @@ async def extract_istimara_endpoint(file: UploadFile = File(...)) -> ExtractResp
             filename=file.filename or "",
             content_type=file.content_type,
             ocr_service=ocr_service,
+            include_raw_text=include_raw_text,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

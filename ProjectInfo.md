@@ -36,7 +36,7 @@ Into this:
   "model_year": "2023",
   "color": "White",
   "vin": "JTXXXXXXXXXXXXXXX",
-  "owner_name": "Abdullah Hafiz",
+  "owner_name": "Owner Name",
   "expiry_date": "2027-05-01"
 }
 Recommended Architecture
